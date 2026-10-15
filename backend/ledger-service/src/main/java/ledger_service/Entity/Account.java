@@ -1,4 +1,3 @@
-
 package ledger_service.Entity;
 
 import jakarta.persistence.*;
@@ -7,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
+
 @Data
 @Entity
 @Table(name = "accounts")
@@ -43,29 +43,12 @@ public class Account {
     private Instant createdAt;
 
 
-
-    public Long getId() {
-        return id;
-    }
-
-    public String getCustomerId() {
-        return customerId;
-    }
-
-    public String getCurrency() {
-        return currency;
-    }
-
-    public AccountType getType() {
-        return type;
-    }
-
-    public AccountStatus getStatus() {
-        return status;
-    }
-
-    public Instant getCreatedAt() {
-        return createdAt;
+    public Account(String customerId, String currency, AccountType type) {
+        this.customerId = customerId;
+        this.currency = currency;
+        this.type = type;
+        this.status = AccountStatus.ACTIVE;
+        this.createdAt = Instant.now();
     }
 
     public void freeze() {

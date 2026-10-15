@@ -2,11 +2,12 @@ package ledger_service.Entity;
 
 import jakarta.persistence.*;
 import lombok.AccessLevel;
+import lombok.Data;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
-
+@Data
 @Entity
 @Table(
         name = "ledger_entries",

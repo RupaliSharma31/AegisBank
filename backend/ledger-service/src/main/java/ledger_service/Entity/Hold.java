@@ -1,10 +1,12 @@
 package ledger_service.Entity;
+
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
+
 @AllArgsConstructor
 @NoArgsConstructor
 @Entity
@@ -43,6 +45,21 @@ public class Hold {
 
     @Column(name = "released_at")
     private Instant releasedAt;
+
+    public Hold(
+            Account account,
+            long amountMinor,
+            String currency,
+            String reference
+    ) {
+        this.account = account;
+        this.amountMinor = amountMinor;
+        this.currency = currency;
+        this.reference = reference;
+        this.status = HoldStatus.ACTIVE;
+        this.createdAt = Instant.now();
+    }
+
     public void release() {
         if (status == HoldStatus.RELEASED) {
             return;

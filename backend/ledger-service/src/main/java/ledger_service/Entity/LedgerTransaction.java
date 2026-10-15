@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 
 import java.time.Instant;
 import java.util.UUID;
+
 @Entity
 @Table(name = "ledger_transactions")
 @Getter
@@ -60,6 +61,17 @@ public class LedgerTransaction {
     private Instant createdAt;
 
 
+    public LedgerTransaction(
+            TransactionType type,
+            String description,
+            String idempotencyKey,
+            Long reversalOfId
+    ) {
+        this.type = type;
+        this.description = description;
+        this.idempotencyKey = idempotencyKey;
+        this.reversalOfId = reversalOfId;
+    }
 
     public void markReversed() {
         status = TransactionStatus.REVERSED;
