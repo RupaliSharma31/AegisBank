@@ -10,10 +10,12 @@ import ledger_service.exception.*;
 import ledger_service.repository.AccountRepo;
 import ledger_service.repository.HoldRepo;
 import ledger_service.repository.LedgerEntryRepo;
+import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Locale;
 
+@Service
 public class HoldService {
     private final AccountRepo accounts;
     private final HoldRepo holds;
@@ -37,11 +39,12 @@ public class HoldService {
         String currency = request.currency().toUpperCase(Locale.ROOT);
 
         if (account.getStatus() != AccountStatus.ACTIVE) {
-            throw new AccountNotActiveException();
+            throw new AccountNotActiveException("Account " + account.getId() + " must be ACTIVE");
         }
 
         if (!account.getCurrency().equals(currency)) {
-            throw new CurrencyMismatchException();
+            throw new CurrencyMismatchException("Account currency is " + account.getCurrency()
+                    + ", hold currency is " + currency);
         }
 
         long balance = entries.calculateBalance(

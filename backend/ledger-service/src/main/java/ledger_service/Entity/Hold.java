@@ -2,16 +2,17 @@ package ledger_service.Entity;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
-import lombok.Data;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.Instant;
 
 @AllArgsConstructor
 @NoArgsConstructor
 @Entity
-@Table(name = "holds")
-@Data
+@Table(name = "holds", uniqueConstraints = {@UniqueConstraint(columnNames = {"account_id", "reference"})})
+@Getter
 public class Hold {
 
     @Id
@@ -34,11 +35,10 @@ public class Hold {
 
     @Column(nullable = false, length = 120)
     private String reference;
-
+    @CreationTimestamp
     @Column(
             name = "created_at",
             nullable = false,
-            insertable = false,
             updatable = false
     )
     private Instant createdAt;

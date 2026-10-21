@@ -2,12 +2,13 @@ package ledger_service.Entity;
 
 import jakarta.persistence.*;
 import lombok.AccessLevel;
-import lombok.Data;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.Instant;
-@Data
+
+@Getter
 @Entity
 @Table(
         name = "ledger_entries",
@@ -18,7 +19,6 @@ import java.time.Instant;
                 )
         }
 )
-@Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class LedgerEntry {
 
@@ -35,19 +35,18 @@ public class LedgerEntry {
     private Account account;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 8)
+    @Column(nullable = false, length = 8, updatable = false)
     private Direction direction;
 
-    @Column(name = "amount_minor", nullable = false)
+    @Column(name = "amount_minor", nullable = false, updatable = false)
     private long amountMinor;
 
-    @Column(nullable = false, length = 3)
+    @Column(nullable = false, length = 3, updatable = false)
     private String currency;
-
+    @CreationTimestamp
     @Column(
             name = "created_at",
             nullable = false,
-            insertable = false,
             updatable = false
     )
     private Instant createdAt;

@@ -5,6 +5,8 @@
     <option name="originalFiles">
       <list>
         <option value="$PROJECT_DIR$/ledger-service/pom.xml" />
+        <option value="$PROJECT_DIR$/transfer-ser/pom.xml" />
+        <option value="$PROJECT_DIR$/transfer-service/pom.xml" />
       </list>
     </option>
   </component>

@@ -7,8 +7,10 @@ import ledger_service.exception.AccountNotFoundException;
 import ledger_service.repository.AccountRepo;
 import ledger_service.repository.HoldRepo;
 import ledger_service.repository.LedgerEntryRepo;
+import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Service
 public class BalanceService {
     private final AccountRepo accounts;
     private final LedgerEntryRepo entries;

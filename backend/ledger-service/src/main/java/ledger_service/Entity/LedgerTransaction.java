@@ -2,9 +2,9 @@ package ledger_service.Entity;
 
 import jakarta.persistence.*;
 import lombok.AccessLevel;
-import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -13,20 +13,17 @@ import java.util.UUID;
 @Table(name = "ledger_transactions")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@AllArgsConstructor
 public class LedgerTransaction {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
     @Column(
             name = "transaction_ref",
             nullable = false,
             unique = true,
             length = 36
     )
-    private String transactionRef = UUID.randomUUID().toString();
-
+    private final String transactionRef = UUID.randomUUID().toString();
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
     @Column(
             name = "idempotency_key",
             unique = true,
@@ -51,26 +48,31 @@ public class LedgerTransaction {
 
     @Column(name = "reversal_of_id")
     private Long reversalOfId;
-
+    @CreationTimestamp
     @Column(
             name = "created_at",
             nullable = false,
-            insertable = false,
+
             updatable = false
     )
     private Instant createdAt;
+    @Column(name = "request_hash", length = 64)
+    private String requestHash;
 
 
     public LedgerTransaction(
             TransactionType type,
             String description,
             String idempotencyKey,
-            Long reversalOfId
+            Long reversalOfId,
+            String requestHash
     ) {
         this.type = type;
         this.description = description;
         this.idempotencyKey = idempotencyKey;
         this.reversalOfId = reversalOfId;
+        this.requestHash = requestHash;
+
     }
 
     public void markReversed() {

@@ -1,6 +1,5 @@
 package ledger_service.service;
 
-
 import ledger_service.Entity.*;
 import ledger_service.dto.EntryRequest;
 import ledger_service.dto.LedgerEntryResponse;
@@ -11,10 +10,15 @@ import ledger_service.repository.AccountRepo;
 import ledger_service.repository.HoldRepo;
 import ledger_service.repository.LedgerEntryRepo;
 import ledger_service.repository.LedgerTransactionRepo;
+import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.*;
 
+@Service
 public class LedgerService {
     private final AccountRepo accounts;
     private final LedgerTransactionRepo transactions;
@@ -38,22 +42,40 @@ public class LedgerService {
             PostTransactionRequest request,
             String idempotencyKey
     ) {
-        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
-            var oldTransaction =
-                    transactions.findByIdempotencyKey(idempotencyKey);
-
-            if (oldTransaction.isPresent()) {
-                return PostTransactionResponse.from(
-                        oldTransaction.get(),
-                        true
-                );
-            }
+        if (request.type() == TransactionType.REVERSAL) {
+            throw new InvalidEntryException(
+                    "REVERSAL type cannot be posted directly"
+            );
         }
 
         if (request.entries() == null || request.entries().size() < 2) {
             throw new InvalidEntryException(
                     "At least two entries are required"
             );
+        }
+
+        String key = blankToNull(idempotencyKey);
+        String requestHash = hash(request);
+
+        // 1st idempotency check
+        if (key != null) {
+            var old = transactions.findByIdempotencyKey(key);
+            if (old.isPresent()) {
+                return replay(old.get(), requestHash);
+            }
+        }
+
+
+        System.out.println("Idempotency key received: [" + key + "]");
+
+        if (key != null) {
+            var old = transactions.findByIdempotencyKey(key);
+
+            System.out.println("Existing transaction found: " + old.isPresent());
+
+            if (old.isPresent()) {
+                return replay(old.get(), requestHash);
+            }
         }
 
         Map<String, long[]> totals = new HashMap<>();
@@ -71,7 +93,7 @@ public class LedgerService {
 
             long[] total = totals.computeIfAbsent(
                     currency,
-                    key -> new long[2]
+                    c -> new long[2]
             );
 
             int index = entry.direction() == Direction.DEBIT ? 0 : 1;
@@ -105,6 +127,14 @@ public class LedgerService {
             lockedAccounts.put(accountId, account);
         }
 
+        // 2nd idempotency check (lock ke baad)
+        if (key != null) {
+            var old = transactions.findByIdempotencyKey(key);
+            if (old.isPresent()) {
+                return replay(old.get(), requestHash);
+            }
+        }
+
         Map<String, Long> debitTotals = new HashMap<>();
 
         for (EntryRequest entry : request.entries()) {
@@ -113,8 +143,7 @@ public class LedgerService {
             String currency =
                     entry.currency().toUpperCase(Locale.ROOT);
 
-            if (account.getStatus() !=
-                    ledger_service.Entity.AccountStatus.ACTIVE) {
+            if (account.getStatus() != AccountStatus.ACTIVE) {
                 throw new AccountNotActiveException(
                         "Account " + account.getId() + " must be ACTIVE"
                 );
@@ -131,11 +160,11 @@ public class LedgerService {
             if (entry.direction() == Direction.DEBIT
                     && account.getType() == AccountType.CUSTOMER) {
 
-                String key = account.getId() + ":" + currency;
+                String debitKey = account.getId() + ":" + currency;
 
                 try {
                     debitTotals.merge(
-                            key,
+                            debitKey,
                             entry.amountMinor(),
                             Math::addExact
                     );
@@ -147,33 +176,15 @@ public class LedgerService {
             }
         }
 
-        for (Map.Entry<String, Long> debit : debitTotals.entrySet()) {
-            String[] parts = debit.getKey().split(":", 2);
-
-            Long accountId = Long.valueOf(parts[0]);
-            String currency = parts[1];
-
-            long balance = entries.calculateBalance(
-                    accountId,
-                    currency
-            );
-
-            long held = holds.activeHoldTotal(
-                    accountId,
-                    currency
-            );
-
-            if (balance - held < debit.getValue()) {
-                throw new InsufficientFundsException();
-            }
-        }
+        checkFunds(debitTotals);
 
         LedgerTransaction transaction = transactions.save(
                 new LedgerTransaction(
                         request.type(),
                         request.description(),
-                        blankToNull(idempotencyKey),
-                        null
+                        key,
+                        null,
+                        requestHash
                 )
         );
 
@@ -194,10 +205,17 @@ public class LedgerService {
 
     @Transactional
     public PostTransactionResponse reverse(Long id, String reason) {
-        LedgerTransaction original = transactions.findById(id)
+        LedgerTransaction original = transactions.findByIdForUpdate(id)
                 .orElseThrow(TransactionNotFoundException::new);
 
-        if (original.getStatus() == TransactionStatus.REVERSED) {
+        if (original.getType() == TransactionType.REVERSAL) {
+            throw new InvalidEntryException(
+                    "A reversal cannot be reversed"
+            );
+        }
+
+        if (original.getStatus() == TransactionStatus.REVERSED
+                || transactions.existsByReversalOfId(id)) {
             throw new AlreadyReversedException();
         }
 
@@ -225,12 +243,37 @@ public class LedgerService {
             lockedAccounts.put(accountId, account);
         }
 
+        // reversal ka DEBIT leg customer ko negative na kare
+        Map<String, Long> debitTotals = new HashMap<>();
+
+        for (LedgerEntry e : originalEntries) {
+            Account acc = lockedAccounts.get(e.getAccount().getId());
+            boolean reversalIsDebit = e.getDirection() == Direction.CREDIT;
+
+            if (reversalIsDebit && acc.getType() == AccountType.CUSTOMER) {
+                try {
+                    debitTotals.merge(
+                            acc.getId() + ":" + e.getCurrency(),
+                            e.getAmountMinor(),
+                            Math::addExact
+                    );
+                } catch (ArithmeticException ex) {
+                    throw new InvalidEntryException(
+                            "Debit total overflow"
+                    );
+                }
+            }
+        }
+
+        checkFunds(debitTotals);
+
         LedgerTransaction reversal = transactions.save(
                 new LedgerTransaction(
                         TransactionType.REVERSAL,
                         "Reversal of transaction " + id + ": " + reason,
                         null,
-                        id
+                        id,
+                        null
                 )
         );
 
@@ -266,6 +309,54 @@ public class LedgerService {
                 .stream()
                 .map(LedgerEntryResponse::from)
                 .toList();
+    }
+
+    // ---------- helpers ----------
+
+    private void checkFunds(Map<String, Long> debitTotals) {
+        for (Map.Entry<String, Long> debit : debitTotals.entrySet()) {
+            String[] parts = debit.getKey().split(":", 2);
+
+            Long accountId = Long.valueOf(parts[0]);
+            String currency = parts[1];
+
+            long balance = entries.calculateBalance(accountId, currency);
+            long held = holds.activeHoldTotal(accountId, currency);
+
+            if (balance - held < debit.getValue()) {
+                throw new InsufficientFundsException();
+            }
+        }
+    }
+
+    private PostTransactionResponse replay(
+            LedgerTransaction old,
+            String requestHash
+    ) {
+        if (old.getRequestHash() != null
+                && !old.getRequestHash().equals(requestHash)) {
+            throw new IdempotencyConflictException(
+                    "Idempotency key already used with a different request"
+            );
+        }
+        return PostTransactionResponse.from(old, true);
+    }
+
+    private String hash(PostTransactionRequest r) {
+        try {
+            StringBuilder sb = new StringBuilder(r.type().name());
+            for (EntryRequest e : r.entries()) {
+                sb.append('|').append(e.accountId())
+                        .append(',').append(e.direction())
+                        .append(',').append(e.amountMinor())
+                        .append(',').append(e.currency().toUpperCase(Locale.ROOT));
+            }
+            byte[] d = MessageDigest.getInstance("SHA-256")
+                    .digest(sb.toString().getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(d);
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException(ex);
+        }
     }
 
     private String blankToNull(String value) {

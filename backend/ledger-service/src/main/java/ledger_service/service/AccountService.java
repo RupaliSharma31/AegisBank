@@ -5,6 +5,8 @@ import ledger_service.dto.AccountResponse;
 import ledger_service.dto.OpenAccountRequest;
 import ledger_service.exception.AccountNotFoundException;
 import ledger_service.repository.AccountRepo;
+import ledger_service.repository.HoldRepo;
+import ledger_service.repository.LedgerEntryRepo;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,7 +16,13 @@ import java.util.Locale;
 public class AccountService {
     private final AccountRepo accounts;
 
-    public AccountService(AccountRepo accounts) {
+    private final LedgerEntryRepo entries;
+    private final HoldRepo holds;
+
+    public AccountService(AccountRepo accounts, LedgerEntryRepo entries,
+                          HoldRepo holds) {
+        this.entries = entries;
+        this.holds = holds;
         this.accounts = accounts;
     }
 
@@ -53,6 +61,13 @@ public class AccountService {
     public AccountResponse close(Long id) {
         Account account = accounts.findByIdForUpdate(id)
                 .orElseThrow(AccountNotFoundException::new);
+        Account acc = accounts.findByIdForUpdate(id).orElseThrow(AccountNotFoundException::new);
+
+        long balance = entries.calculateBalance(id, acc.getCurrency());
+        long held = holds.activeHoldTotal(id, acc.getCurrency());
+        if (balance != 0 || held != 0) {
+            throw new IllegalStateException("Balance and holds must be zero to close the account");
+        }
 
         account.close();
 

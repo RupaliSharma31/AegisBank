@@ -5,12 +5,16 @@ import ledger_service.Entity.*;
 import ledger_service.dto.EntryRequest;
 import ledger_service.dto.PostTransactionRequest;
 import ledger_service.dto.PostTransactionResponse;
+import ledger_service.exception.AccountNotActiveException;
 import ledger_service.exception.AccountNotFoundException;
+import ledger_service.exception.InvalidEntryException;
 import ledger_service.repository.AccountRepo;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.stereotype.Service;
 
 import java.util.List;
 
+
+@Service
 public class DepositService {
     private final AccountRepo accounts;
     private final LedgerService ledger;
@@ -23,30 +27,29 @@ public class DepositService {
         this.ledger = ledger;
     }
 
-    @Transactional
+
     public PostTransactionResponse deposit(
             Long customerAccountId,
             long amountMinor,
             String reference
     ) {
+        if (reference == null || reference.isBlank()) {
+            throw new InvalidEntryException("reference is required");
+        }
         Account customer = accounts.findById(customerAccountId)
                 .orElseThrow(AccountNotFoundException::new);
+        if (customer.getType() != AccountType.CUSTOMER
+                || customer.getStatus() != AccountStatus.ACTIVE) {
+            throw new AccountNotActiveException(
+                    "Customer account must be an ACTIVE CUSTOMER account");
+        }
 
-        Account bank = accounts.findAll()
-                .stream()
-                .filter(account ->
-                        account.getType() == AccountType.BANK_CASH
-                                && account.getCurrency().equals(customer.getCurrency())
-                                && account.getStatus() == AccountStatus.ACTIVE
-                )
-                .findFirst()
-                .orElseThrow(() ->
-                        new AccountNotFoundException(
-                                "No active BANK_CASH account for currency "
-                                        + customer.getCurrency()
-                        )
-                );
-
+        Account bank = accounts.findFirstByTypeAndCurrencyAndStatus(
+                        AccountType.BANK_CASH,
+                        customer.getCurrency(),
+                        AccountStatus.ACTIVE)
+                .orElseThrow(() -> new AccountNotFoundException(
+                        "No active BANK_CASH account for currency " + customer.getCurrency()));
         PostTransactionRequest request = new PostTransactionRequest(
                 TransactionType.DEPOSIT,
                 "Deposit: " + reference,
@@ -66,6 +69,6 @@ public class DepositService {
                 )
         );
 
-        return ledger.post(request, "deposit-" + reference);
+        return ledger.post(request, "deposit-" + reference.trim());
     }
 }

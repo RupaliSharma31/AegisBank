@@ -2,12 +2,14 @@ package ledger_service.Entity;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
-import lombok.Data;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.Instant;
+import java.util.UUID;
 
-@Data
+@Getter
 @Entity
 @Table(name = "accounts")
 @AllArgsConstructor
@@ -33,11 +35,10 @@ public class Account {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
     private AccountStatus status = AccountStatus.ACTIVE;
-
+    @CreationTimestamp
     @Column(
             name = "created_at",
             nullable = false,
-            insertable = false,
             updatable = false
     )
     private Instant createdAt;
@@ -48,7 +49,7 @@ public class Account {
         this.currency = currency;
         this.type = type;
         this.status = AccountStatus.ACTIVE;
-        this.createdAt = Instant.now();
+        this.accountNumber = "AC" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
     }
 
     public void freeze() {
